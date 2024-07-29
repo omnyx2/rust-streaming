@@ -1,0 +1,10 @@
+[package]
+name = "webcam"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4.24"
+opencv = { version = "0.91.3", features = ["clang-runtime"] }
+anyhow = "1.0.86"
+crossbeam-channel = "0.5"
