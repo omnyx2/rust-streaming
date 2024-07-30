@@ -30,13 +30,24 @@ fn get_current_timestamp() -> String {
 // Function to capture frames
 pub fn handle_videostream(camera_id: i32, sender: crossbeam_channel::Sender<Frame>) {
   let mut cam = videoio::VideoCapture::new(camera_id, videoio::CAP_ANY).unwrap();
-
+   cam.set(videoio::CAP_PROP_FPS, 60.0).unwrap();
   loop {
       let mut frame = Mat::default();
+      let fps = cam.get(videoio::CAP_PROP_FPS).unwrap();
       if cam.read(&mut frame).unwrap() {
+          println!("{}",fps);
           let timestamp = get_current_timestamp();
           let data = &frame;
-          sender.send(Frame { data: frame, meta_data: VideoMetaData { timestamp } }).unwrap();
+          // 추후에 이 로직을 비동기로 넣고 처리해야함.
+          // 그러면 뭐 금방되것지
+          use std::time::Instant;
+          let now = Instant::now();
+
+          sender.send(Frame { data: frame.clone(), meta_data: VideoMetaData { timestamp: timestamp.clone() } }).unwrap();
+          sender.send(Frame { data: frame.clone(), meta_data: VideoMetaData { timestamp: timestamp.clone() } }).unwrap();
+
+          let elapsed = now.elapsed();
+            println!("Elapsed: {:.2?}", elapsed);
       }
   }
 }
