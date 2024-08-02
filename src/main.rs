@@ -4,8 +4,11 @@ mod commands;
 mod video_opencv;
 // mod video_gstream;
 mod filesaver;
+mod kafka_apis;
 mod headers;
-
+mod checkconnections;
+ 
+mod Error;
 // mod headers::{opencv_frame};
 
 use std::sync::{Arc, Mutex};
@@ -16,12 +19,10 @@ use std::thread;
 use crate::headers::opencv_frame;
 
 use crossbeam_channel::bounded;
-use std::time::Duration;
+// use std::env;
+// use std::time::Duration;
 use opencv::{
-    imgcodecs,
-    core,
     highgui,
-    videoio,
     prelude::*,
     Result,
 };
@@ -31,7 +32,22 @@ use opencv::{
 //   timestamp: String,
 // }
 
+// #[derive(Debug)]
 fn main() -> Result<()> {
+    // tracing_subscriber::fmt::init();
+    // let args: Vec<String> = env::args().collect();
+    // let mode = &args[1];
+    let kafka_connection = kafka_apis::KafkaConfig {
+      broker: String::from("10.80.0.3:9094"),
+      topic: String::from("video-topic")
+    };
+    checkconnections::all(10,kafka_connection,String::from("./img"));    
+    let kafka_connection = kafka_apis::KafkaConfig {
+      broker: String::from("10.80.0.3:9094"),
+      topic: String::from("video-topic")
+    };
+
+    
     let (s, r) = bounded(1);
     let (s2, r2) = (s.clone(), r.clone());
 
@@ -73,11 +89,17 @@ fn main() -> Result<()> {
         0,
         ims1);
     });
-   
+
     // 저쟝 쓰레드 시작
-    let exit_flag_clone_3 = Arc::clone(&exit_flag);
+    // let exit_flag_clone_3 = Arc::clone(&exit_flag);
     thread::spawn(move|| {
-      filesaver::frame_saver(imr2, exit_flag_clone_3);
+       
+    for received in &imr2 {
+      if let Err(e) = kafka_apis::produce_message( &received.data.data_bytes().unwrap(), &kafka_connection.topic, vec![kafka_connection.broker.to_owned()]) {
+        println!("Failed producing messages: {}", e);
+      }
+    } 
+      // filesaver::frame_saver(imr2, exit_flag_clone_3);
     });
 
     highgui::named_window("video", highgui::WINDOW_NORMAL)?;
@@ -87,11 +109,17 @@ fn main() -> Result<()> {
     for received in &imr1 {
       // let image_name = format!("{}{}{}-{}{}", basePath, "frame-", i, &received.meta_data.timestamp, format);
       println!("Rec eived frame: {:?}", &received.meta_data.timestamp);
+
       // nvidia-deep-stream, data-pipline to save faster
       // data pipeline to connect,
       // High-End-GPU
       // Data PipeLine
       highgui::imshow("Webcam", &received.data)?;
+      // if let Err(e) = kafka_apis::produce_message( &received.meta_data.timestamp.as_bytes(), topic, vec![broker.to_owned()]) {
+      // if let Err(e) = kafka_apis::produce_message( &received.data.data_bytes().unwrap(), topic, vec![broker.to_owned()]) {
+      //   println!("Failed producing messages: {}", e);
+      // }
+
       if *exit_flag.lock().unwrap() {
         break;  
       }

@@ -2,7 +2,7 @@
 // use std::thread;
 // use std::sync::mpsc;  
  
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc,  Mutex};
 use crate::headers::opencv_frame::Frame;
 use crate::headers::opencv_frame::VideoMetaData;
 

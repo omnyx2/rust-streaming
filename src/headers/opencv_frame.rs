@@ -4,10 +4,7 @@ use chrono::prelude::*;
 use anyhow::Result; // Automatically handle the error types
 use opencv::{
     core::{self},
-    imgcodecs,
-    prelude::*,
-    videoio,
-    highgui 
+    prelude::*,    
 };  
 
 pub struct VideoMetaData {

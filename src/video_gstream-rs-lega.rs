@@ -1,86 +1,52 @@
+use gstreamer::prelude::*;
+use std::env;
 
+fn gstreamer_recode() {
+    // Initialize GStreamer
+    gstreamer::init().expect("Failed to initialize GStreamer");
 
-/// On macOS this launches the callback function on a thread.
-/// On other platforms it's just executed immediately.
-#[cfg(not(target_os = "macos"))]
-pub fn run<T, F: FnOnce() -> T + Send + 'static>(main: F) -> T
-where
-    T: Send + 'static,
-{
-    main()
-}
+    // Create a new pipeline
+    let pipeline = gstreamer::Pipeline::new(None);
 
-#[cfg(target_os = "macos")]
-pub fn run<T, F: FnOnce() -> T + Send + 'static>(main: F) -> T
-where
-    T: Send + 'static,
-{
-    use std::{
-        ffi::c_void,
-        sync::mpsc::{channel, Sender},
-        thread,
-    };
+    // Create elements
+    let source = gstreamer::ElementFactory::make("filesrc", None)
+        .expect("Failed to create 'filesrc' element");
+    let decoder = gstreamer::ElementFactory::make("decodebin", None)
+        .expect("Failed to create 'decodebin' element");
+    let sink = gstreamer::ElementFactory::make("autovideosink", None)
+        .expect("Failed to create 'autovideosink' element");
 
-    use cocoa::{
-        appkit::{NSApplication, NSWindow},
-        base::id,
-        delegate,
-    };
-    use objc::{
-        class, msg_send,
-        runtime::{Object, Sel},
-        sel, sel_impl,
-    };
+    // Set properties
+    source.set_property("location", "video.mp4").expect("Failed to set 'location' property");
 
-    unsafe {
-        let app = cocoa::appkit::NSApp();
-        let (send, recv) = channel::<()>();
+    // Add elements to the pipeline
+    pipeline.add_many(&[&source, &decoder, &sink]).expect("Failed to add elements to pipeline");
+    gstreamer::Element::link_many(&[&source, &decoder]).expect("Failed to link elements");
 
-        extern "C" fn on_finish_launching(this: &Object, _cmd: Sel, _notification: id) {
-            let send = unsafe {
-                let send_pointer = *this.get_ivar::<*const c_void>("send");
-                let boxed = Box::from_raw(send_pointer as *mut Sender<()>);
-                *boxed
-            };
-            send.send(()).unwrap();
+    // Link decoder to sink using a pad-added signal
+    decoder.connect_pad_added(move |_, src_pad| {
+        let sink_pad = sink.get_static_pad("sink").expect("Failed to get sink pad");
+        src_pad.link(&sink_pad).expect("Failed to link pads");
+    });
+
+    // Start playing
+    pipeline.set_state(gstreamer::State::Playing).expect("Failed to set pipeline to Playing state");
+
+    // Wait until the pipeline finishes
+    let bus = pipeline.get_bus().expect("Failed to get bus");
+    for msg in bus.timed_pop_filtered(gstreamer::ClockTime::from_seconds(10), &[gstreamer::MessageType::Eos, gstreamer::MessageType::Error]) {
+        match msg.view() {
+            gstreamer::MessageView::Error(err) => {
+                eprintln!("Error: {}", err.get_error());
+                eprintln!("Debug info: {:?}", err.get_debug());
+            }
+            gstreamer::MessageView::Eos(_) => {
+                println!("End of stream reached.");
+            }
+            _ => (),
         }
-
-        let delegate = delegate!("AppDelegate", {
-            app: id = app,
-            send: *const c_void = Box::into_raw(Box::new(send)) as *const c_void,
-            (applicationDidFinishLaunching:) => on_finish_launching as extern fn(&Object, Sel, id)
-        });
-        app.setDelegate_(delegate);
-
-        let t = thread::spawn(move || {
-            // Wait for the NSApp to launch to avoid possibly calling stop_() too early
-            recv.recv().unwrap();
-
-            let res = main();
-
-            let app = cocoa::appkit::NSApp();
-            app.stop_(cocoa::base::nil);
-
-            // Stopping the event loop requires an actual event
-            let event = cocoa::appkit::NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2_(
-                cocoa::base::nil,
-                cocoa::appkit::NSEventType::NSApplicationDefined,
-                cocoa::foundation::NSPoint { x: 0.0, y: 0.0 },
-                cocoa::appkit::NSEventModifierFlags::empty(),
-                0.0,
-                0,
-                cocoa::base::nil,
-                cocoa::appkit::NSEventSubtype::NSApplicationActivatedEventType,
-                0,
-                0,
-            );
-            app.postEvent_atStart_(event, cocoa::base::YES);
-
-            res
-        });
-
-        app.run();
-
-        t.join().unwrap()
     }
+
+    // Stop the pipeline
+    pipeline.set_state(gstreamer::State::Null).expect("Failed to set pipeline to Null state");
 }

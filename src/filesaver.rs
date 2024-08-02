@@ -6,13 +6,11 @@ use std::sync::{Arc, Mutex};
 use crate::headers::opencv_frame::Frame;
 
 use crossbeam_channel::Receiver;
-use chrono::prelude::*;
 use anyhow::Result; // Automatically handle the error types
 use opencv::{
     core::{self},
     imgcodecs,
-    prelude::*,
-    videoio,
+     videoio,
     highgui 
 }; // Note, the namespace of OpenCV is changed (to better or worse). It is no longer one enormous.
 
